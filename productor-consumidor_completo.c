@@ -1,7 +1,9 @@
 #include "board.h"
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,16 +12,21 @@
 
 #define SIZE 16
 
+typedef struct{
+    char * message;
+    int temperature;
+}Data;
+
 /*****************************************************************************
  * Variables
  ****************************************************************************/
 
-static const char buffer[256] = "abcdefghijklmnopqrstuvwxyz0123456789 ";
+static const char characters[256] = "abcdefghijklmnopqrstuvwxyz0123456789 ";
 
-xQueueHandle xQueue = NULL;
+xQueueHandle queue;
 
 /*****************************************************************************
- * Otras Funciones
+ * Functions
  ****************************************************************************/
 
 /* Sets up system hardware */
@@ -29,58 +36,69 @@ static void prvSetupHardware(void)
 	Board_Init();
 }
 
-/* Producer Thread */
+/* Temperature producer Thread */
 static void temp_producer(void *pvParameters) {
 
-	int temperatura;
-	char tempe[SIZE] = "";
+    Data * tempData;
+	tempData = malloc(sizeof(Data *));
+
+	tempData->message = NULL;
 
 	while (1) {
 
-		temperatura = rand() % 100;
-		itoa(temperatura, tempe, 10);
-		//sprintf(tempe, "%d", temperatura);
-		printf("temp: %s\n", tempe);
+		tempData->temperature = rand() % 100;
 
-		xQueueSend(xQueue, tempe, 0);
-		/* About a 6Hz period*/
-		vTaskDelay(configTICK_RATE_HZ / 6);
+		xQueueSend(queue, (Data *) &tempData, 5);
+
+		vTaskDelay(30 / portTICK_RATE_MS);
 	}
 }
 
-/* Producer Thread */
+/* Command producer Thread */
 static void str_producer(void *pvParameters) {
 
-	int tam;
+    Data * mesgData;
+	mesgData = malloc(sizeof(Data *));
+	mesgData->message = malloc(SIZE);
+	mesgData->temperature = NULL;
+
 	char str[SIZE] = "";
+	int tam;
 	int element;
 
 	while (1) {
 
-		tam = rand() % SIZE-1;
-		memset(str, 0, SIZE-1);
+		tam = (rand() % (SIZE-1)) + 1;
 
 		for(int i=0; i<tam; i++){
-			element = rand() % (int) strlen(buffer);
-			strcat(str, &buffer[element]);
-			printf("%c", buffer[element]);
+			element = rand() % ((int) strlen(characters));
+			str[i] = characters[element];
 		}
 
-		xQueueSend(xQueue, str, 0);
-		printf("\n");
+		str[tam] = '\0';
+
+		strcpy(mesgData->message, str);
+
+		xQueueSend(queue, (Data *) &mesgData, 5);
 		//TODO: should be non-periodic
-		vTaskDelay(configTICK_RATE_HZ / (rand() % 6));
+		vTaskDelay((10 * ((rand() % 10) + 6) / portTICK_RATE_MS) );
 	}
 }
 
 /* Consumer Thread */
 static void consumer(void *pvParameters) {
 
-	void * ptr;
+	Data * dataPtr;
 
 	while (1) {
-		if(xQueueReceive(xQueue, ptr, 0) == pdTRUE){
-			printf("%s\n", ptr);
+		if(xQueueReceive(queue, &dataPtr, portMAX_DELAY)){
+
+			if(dataPtr->message != NULL){
+				printf("Command: %s\n", dataPtr->message);
+			}
+			if(dataPtr->temperature != NULL){
+				printf("Core temperature: %2d\n", dataPtr->temperature);
+			}
 		}
 	}
 }
@@ -93,17 +111,21 @@ int main(void)
 {
 	prvSetupHardware();
 
+	vTraceEnable(TRC_START);
+
+	/* Initialize the Queue */
+	queue = xQueueCreate(10, sizeof(Data *));
+
 	srand(time(NULL));
 
-	xQueue = xQueueCreate(10, sizeof(void *));
 
-	/* Buffer producer thread */
+	/* Buffer producer threads */
 	xTaskCreate(temp_producer, (signed char *) "vTaskP1",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 3UL),
 				(xTaskHandle *) NULL);
 
-		xTaskCreate(str_producer, (signed char *) "vTaskP2",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	xTaskCreate(str_producer, (signed char *) "vTaskP2",
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 				(xTaskHandle *) NULL);
 
 	/* Buffer consumer thread */
@@ -117,3 +139,4 @@ int main(void)
 	/* Should never arrive here */
 	return 1;
 }
+

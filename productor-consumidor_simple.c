@@ -26,11 +26,11 @@ static void prvSetupHardware(void)
 static void producer(void *pvParameters) {
 
 	while (1) {
-		//printf("\nagrego\n");
+
 		strcat(buffer, "a");
-		printf(buffer);
+		printf("%s\n", buffer);
 		/* About a 6Hz period */
-		vTaskDelay(configTICK_RATE_HZ / 6);
+		vTaskDelay(10 / portTICK_RATE_MS);
 	}
 }
 
@@ -38,10 +38,11 @@ static void producer(void *pvParameters) {
 static void consumer(void *pvParameters) {
 
 	while (1) {
-		//printf("\nlimpio\n");
+
 		strcpy(buffer, "b");
+		printf("%s\n", buffer);
 		/* About a 1Hz period */
-		vTaskDelay(configTICK_RATE_HZ);
+		vTaskDelay(80 / portTICK_RATE_MS);
 	}
 }
 
@@ -69,3 +70,4 @@ int main(void)
 	/* Should never arrive here */
 	return 1;
 }
+
